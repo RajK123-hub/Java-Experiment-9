@@ -1,0 +1,366 @@
+Part A 
+
+// Main.java
+import org.springframework.context.annotation.*;
+
+// --- Dependent Class ---
+class Course {
+    private String courseName;
+
+    public Course(String courseName) {
+        this.courseName = courseName;
+    }
+
+    public void displayCourse() {
+        System.out.println("Enrolled in course: " + courseName);
+    }
+}
+
+// --- Dependent-on Class ---
+class Student {
+    private Course course;
+
+    // Constructor Injection
+    public Student(Course course) {
+        this.course = course;
+    }
+
+    public void showDetails() {
+        System.out.println("Student details:");
+        course.displayCourse();
+    }
+}
+
+// --- Configuration Class ---
+@Configuration
+class AppConfig {
+    @Bean
+    public Course courseBean() {
+        return new Course("Spring Framework");
+    }
+
+    @Bean
+    public Student studentBean() {
+        return new Student(courseBean());
+    }
+}
+
+// --- Main Class ---
+public class Main {
+    public static void main(String[] args) {
+        // Initialize Spring Context using Java-based Configuration
+        AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext(AppConfig.class);
+
+        // Retrieve the Student bean
+        Student student = context.getBean(Student.class);
+        student.showDetails();
+
+        // Close the context
+        context.close();
+    }
+}
+
+Part B 
+
+// Main.java
+import org.hibernate.*;
+import org.hibernate.cfg.Configuration;
+import jakarta.persistence.*;
+
+// --- Entity Class ---
+@Entity
+@Table(name = "students")
+class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "email")
+    private String email;
+
+    public Student() {}
+
+    public Student(String name, String email) {
+        this.name = name;
+        this.email = email;
+    }
+
+    // Getters & Setters
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public String getEmail() { return email; }
+    public void setName(String name) { this.name = name; }
+    public void setEmail(String email) { this.email = email; }
+
+    @Override
+    public String toString() {
+        return "Student [id=" + id + ", name=" + name + ", email=" + email + "]";
+    }
+}
+
+// --- Main Class for CRUD Operations ---
+public class Main {
+    public static void main(String[] args) {
+        // Configure Hibernate (hibernate.cfg.xml should exist in classpath)
+        SessionFactory factory = new Configuration()
+                .configure("hibernate.cfg.xml")
+                .addAnnotatedClass(Student.class)
+                .buildSessionFactory();
+
+        // --- Create Operation ---
+        createStudent(factory, "Rahul Sharma", "rahul@example.com");
+
+        // --- Read Operation ---
+        readStudents(factory);
+
+        // --- Update Operation ---
+        updateStudent(factory, 1, "Rahul Verma");
+
+        // --- Delete Operation ---
+        deleteStudent(factory, 1);
+
+        factory.close();
+    }
+
+    // Create
+    private static void createStudent(SessionFactory factory, String name, String email) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        Student s1 = new Student(name, email);
+        session.save(s1);
+        tx.commit();
+        session.close();
+        System.out.println("Student added successfully!");
+    }
+
+    // Read
+    private static void readStudents(SessionFactory factory) {
+        Session session = factory.openSession();
+        Query<Student> query = session.createQuery("from Student", Student.class);
+        for (Student s : query.list()) {
+            System.out.println(s);
+        }
+        session.close();
+    }
+
+    // Update
+    private static void updateStudent(SessionFactory factory, int id, String newName) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        Student s = session.get(Student.class, id);
+        if (s != null) {
+            s.setName(newName);
+            session.update(s);
+            System.out.println("Student updated: " + s);
+        } else {
+            System.out.println("Student not found!");
+        }
+        tx.commit();
+        session.close();
+    }
+
+    // Delete
+    private static void deleteStudent(SessionFactory factory, int id) {
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        Student s = session.get(Student.class, id);
+        if (s != null) {
+            session.delete(s);
+            System.out.println("Student deleted with ID: " + id);
+        } else {
+            System.out.println("Student not found!");
+        }
+        tx.commit();
+        session.close();
+    }
+}
+
+
+Part C 
+
+// Main.java
+import org.hibernate.*;
+import org.hibernate.cfg.Configuration;
+import org.springframework.context.annotation.*;
+import org.springframework.orm.hibernate5.*;
+import org.springframework.transaction.annotation.*;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import jakarta.persistence.*;
+import java.util.List;
+
+// --- ENTITY CLASSES ---
+
+@Entity
+@Table(name = "accounts")
+class Account {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    private String holderName;
+    private double balance;
+
+    public Account() {}
+    public Account(String holderName, double balance) {
+        this.holderName = holderName;
+        this.balance = balance;
+    }
+
+    public int getId() { return id; }
+    public String getHolderName() { return holderName; }
+    public double getBalance() { return balance; }
+    public void setBalance(double balance) { this.balance = balance; }
+
+    @Override
+    public String toString() {
+        return "Account [id=" + id + ", holder=" + holderName + ", balance=" + balance + "]";
+    }
+}
+
+@Entity
+@Table(name = "transactions")
+class TransactionRecord {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    private String fromAccount;
+    private String toAccount;
+    private double amount;
+
+    public TransactionRecord() {}
+    public TransactionRecord(String from, String to, double amount) {
+        this.fromAccount = from;
+        this.toAccount = to;
+        this.amount = amount;
+    }
+}
+
+// --- DAO LAYER ---
+@Repository
+class AccountDAO {
+    private final SessionFactory sessionFactory;
+
+    public AccountDAO(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
+    }
+
+    public Account getAccount(int id) {
+        return sessionFactory.getCurrentSession().get(Account.class, id);
+    }
+
+    public void updateAccount(Account account) {
+        sessionFactory.getCurrentSession().update(account);
+    }
+
+    public void saveTransaction(TransactionRecord tr) {
+        sessionFactory.getCurrentSession().save(tr);
+    }
+
+    public List<Account> getAllAccounts() {
+        return sessionFactory.getCurrentSession()
+                .createQuery("from Account", Account.class).list();
+    }
+}
+
+// --- SERVICE LAYER ---
+@Service
+class BankingService {
+    private final AccountDAO accountDAO;
+
+    public BankingService(AccountDAO accountDAO) {
+        this.accountDAO = accountDAO;
+    }
+
+    @Transactional
+    public void transferMoney(int fromId, int toId, double amount) {
+        Account fromAcc = accountDAO.getAccount(fromId);
+        Account toAcc = accountDAO.getAccount(toId);
+
+        if (fromAcc.getBalance() < amount) {
+            throw new RuntimeException("Insufficient balance in " + fromAcc.getHolderName());
+        }
+
+        fromAcc.setBalance(fromAcc.getBalance() - amount);
+        toAcc.setBalance(toAcc.getBalance() + amount);
+
+        accountDAO.updateAccount(fromAcc);
+        accountDAO.updateAccount(toAcc);
+
+        accountDAO.saveTransaction(new TransactionRecord(fromAcc.getHolderName(), toAcc.getHolderName(), amount));
+
+        System.out.println("✅ Transaction successful: " + amount + " transferred from " 
+                           + fromAcc.getHolderName() + " to " + toAcc.getHolderName());
+    }
+}
+
+// --- SPRING CONFIGURATION ---
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages = "")
+class AppConfig {
+
+    @Bean
+    public SessionFactory sessionFactory() {
+        return new Configuration()
+                .configure("hibernate.cfg.xml")
+                .addAnnotatedClass(Account.class)
+                .addAnnotatedClass(TransactionRecord.class)
+                .buildSessionFactory();
+    }
+
+    @Bean
+    public HibernateTransactionManager transactionManager(SessionFactory factory) {
+        return new HibernateTransactionManager(factory);
+    }
+
+    @Bean
+    public AccountDAO accountDAO(SessionFactory factory) {
+        return new AccountDAO(factory);
+    }
+
+    @Bean
+    public BankingService bankingService(AccountDAO dao) {
+        return new BankingService(dao);
+    }
+}
+
+// --- MAIN CLASS ---
+public class Main {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext(AppConfig.class);
+
+        BankingService service = context.getBean(BankingService.class);
+        SessionFactory factory = context.getBean(SessionFactory.class);
+
+        // Initialize sample accounts
+        Session session = factory.openSession();
+        Transaction tx = session.beginTransaction();
+        session.save(new Account("Alice", 5000));
+        session.save(new Account("Bob", 2000));
+        tx.commit();
+        session.close();
+
+        // Perform Transaction
+        try {
+            service.transferMoney(1, 2, 1000);
+        } catch (Exception e) {
+            System.out.println("❌ Transaction failed: " + e.getMessage());
+        }
+
+        // Display updated account balances
+        Session s = factory.openSession();
+        List<Account> list = s.createQuery("from Account", Account.class).list();
+        System.out.println("\n💰 Updated Accounts:");
+        for (Account a : list) System.out.println(a);
+        s.close();
+
+        context.close();
+    }
+}
